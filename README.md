@@ -21,49 +21,71 @@ eliminating the need for a separate reference model or a two-stage SFT-then-DPO 
 
 ## Architecture Overview
 
-```
-                    +------------------+
-                    |   orpo_config    |
-                    |     (.yaml)      |
-                    +--------+---------+
-                             |
-              +--------------+--------------+
-              |                             |
-     +--------v---------+        +---------v----------+
-     |    SlimOrca       |        | orpo-dpo-mix-40k   |
-     |  (518K SFT data)  |        | (40K pref. pairs)  |
-     +--------+----------+        +---------+----------+
-              |                             |
-              |  data_prep.py               |
-              |  - ChatML formatting        |
-              |  - ShareGPT -> ChatML       |
-              +-------------+---------------+
-                            |
-                   +--------v---------+
-                   |  Merged Dataset   |
-                   |  prompt/chosen/   |
-                   |  rejected         |
-                   +--------+----------+
-                            |
-                   +--------v---------+
-                   |  train_orpo.py    |
-                   |  - Unsloth 4-bit  |
-                   |  - QLoRA r=16     |
-                   |  - ORPOTrainer    |
-                   +--------+----------+
-                            |
-              +-------------+-------------+
-              |                           |
-     +--------v---------+       +--------v---------+
-     |  LoRA Adapters    |       |  Merged Model    |
-     |  (lightweight)    |       |  (full weights)  |
-     +-------------------+       +--------+---------+
-                                          |
-                                 +--------v---------+
-                                 |  evaluate.sh      |
-                                 |  IFEval, GSM8K,   |
-                                 |  MATH, MMLU       |
-                                 +-------------------+
+```mermaid
+flowchart TD
+    subgraph CONFIG["Configuration"]
+        C["orpo_config.yaml\n\nAll hyperparameters"]
+    end
+
+    subgraph DATA["Data Sources"]
+        D1["Open-Orca/SlimOrca\n\n~518K instruction-response pairs\nShareGPT format"]
+        D2["mlabonne/orpo-dpo-mix-40k\n\n~40K preference pairs\nchosen + rejected"]
+    end
+
+    subgraph PREP["data_prep.py"]
+        P1["ChatML Formatting\n\nim_start / im_end tokens\nQwen 2.5 template"]
+        P2["Merge & Split\n\nFilter toxic samples\n95% train / 5% val"]
+    end
+
+    subgraph TRAIN["train_orpo.py"]
+        T1["Unsloth FastLanguageModel\n\n4-bit NF4 quantization\ndtype = float16"]
+        T2["QLoRA Adapters\n\nr=16, alpha=16\n7 target modules"]
+        T3["ORPOTrainer\n\nbeta=0.1, lr=5e-6\nadamw_8bit optimizer"]
+    end
+
+    subgraph OUTPUT["Outputs"]
+        O1["LoRA Adapters\n\nLightweight\n~200MB"]
+        O2["Merged Model\n\nBase + LoRA\nFull weights"]
+    end
+
+    subgraph EVAL["evaluate.sh"]
+        E1["IFEval\n0-shot"]
+        E2["GSM8K\n5-shot"]
+        E3["MATH\n4-shot"]
+        E4["MMLU\n5-shot"]
+    end
+
+    C --> D1 & D2
+    D1 --> P1
+    D2 --> P1
+    P1 --> P2
+    P2 --> T1
+    T1 --> T2
+    T2 --> T3
+    T3 --> O1 & O2
+    O2 --> E1 & E2 & E3 & E4
+
+    style CONFIG fill:#1a1a2e,stroke:#e94560,color:#eee
+    style DATA fill:#16213e,stroke:#0f3460,color:#eee
+    style PREP fill:#1a1a2e,stroke:#e94560,color:#eee
+    style TRAIN fill:#0f3460,stroke:#53a8b6,color:#eee
+    style OUTPUT fill:#1a1a2e,stroke:#e94560,color:#eee
+    style EVAL fill:#16213e,stroke:#0f3460,color:#eee
+
+    style C fill:#e94560,stroke:#e94560,color:#fff
+    style D1 fill:#0f3460,stroke:#53a8b6,color:#fff
+    style D2 fill:#0f3460,stroke:#53a8b6,color:#fff
+    style P1 fill:#533483,stroke:#e94560,color:#fff
+    style P2 fill:#533483,stroke:#e94560,color:#fff
+    style T1 fill:#2b6777,stroke:#53a8b6,color:#fff
+    style T2 fill:#2b6777,stroke:#53a8b6,color:#fff
+    style T3 fill:#2b6777,stroke:#53a8b6,color:#fff
+    style O1 fill:#c84b31,stroke:#e94560,color:#fff
+    style O2 fill:#c84b31,stroke:#e94560,color:#fff
+    style E1 fill:#0f3460,stroke:#53a8b6,color:#fff
+    style E2 fill:#0f3460,stroke:#53a8b6,color:#fff
+    style E3 fill:#0f3460,stroke:#53a8b6,color:#fff
+    style E4 fill:#0f3460,stroke:#53a8b6,color:#fff
 ```
 
 ---
