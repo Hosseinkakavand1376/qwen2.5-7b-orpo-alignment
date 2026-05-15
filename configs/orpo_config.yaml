@@ -1,0 +1,88 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# ORPO Training Configuration — Qwen2.5-7B on Kaggle T4 x2
+# ═══════════════════════════════════════════════════════════════════════════════
+# All hyperparameters in one place. Override via CLI or notebook variables.
+
+# ── Model ────────────────────────────────────────────────────────────────────
+model:
+  name: "Qwen/Qwen2.5-7B"                   # Base model (not Instruct)
+  max_seq_length: 1024
+  dtype: "float16"                            # T4 does NOT support bf16
+  load_in_4bit: true                          # QLoRA 4-bit quantization (NF4)
+  attn_implementation: "eager"                # T4 has no native FA2; Unsloth handles optimization
+
+# ── LoRA / QLoRA ─────────────────────────────────────────────────────────────
+lora:
+  r: 16                                       # LoRA rank
+  lora_alpha: 16                              # Scaling factor (alpha/r = 1.0)
+  lora_dropout: 0.0                           # Unsloth recommends 0 for QLoRA
+  bias: "none"
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
+  use_gradient_checkpointing: "unsloth"       # Unsloth-optimized gradient checkpointing
+
+# ── Data ─────────────────────────────────────────────────────────────────────
+data:
+  sft_dataset: "Open-Orca/SlimOrca"           # SFT source (instruction-response pairs)
+  sft_subset_size: 50000                      # Number of SFT samples to use
+  preference_dataset: "mlabonne/orpo-dpo-mix-40k"  # Preference pairs (chosen + rejected)
+  preference_subset_size: 13000               # Number of preference pairs to sample
+  val_split: 0.05                             # 5% validation split
+  seed: 42
+  num_proc: 4                                 # Parallel workers for data processing
+  output_dir: "/kaggle/working/processed_data"
+
+# ── ORPO Training ────────────────────────────────────────────────────────────
+training:
+  output_dir: "/kaggle/working/orpo_checkpoints"
+  num_train_epochs: 1                         # 1 epoch for large dataset; increase if small
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 8              # Effective batch size = 1 * 8 = 8
+  learning_rate: 5.0e-6
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.1
+  weight_decay: 0.01
+  beta: 0.1                                  # ORPO odds-ratio preference weight
+  fp16: true                                  # T4-compatible mixed precision
+  bf16: false                                 # T4 does NOT support bf16
+  optim: "adamw_8bit"                         # 8-bit optimizer for VRAM savings
+  max_grad_norm: 1.0
+  logging_steps: 10
+  eval_strategy: "steps"
+  eval_steps: 200
+  save_strategy: "steps"
+  save_steps: 500
+  save_total_limit: 2                         # Keep only last 2 checkpoints (Kaggle disk space)
+  report_to: "wandb"                          # Set to "none" to disable WandB
+  max_seq_length: 1024
+
+# ── WandB ────────────────────────────────────────────────────────────────────
+wandb:
+  project: "qwen25-7b-orpo"
+  run_name: "orpo-t4x2-r16"
+  enabled: true                               # Set false to disable; uses WANDB_API_KEY secret
+
+# ── Model Saving ─────────────────────────────────────────────────────────────
+saving:
+  lora_output_dir: "/kaggle/working/orpo_lora_adapters"
+  merged_output_dir: "/kaggle/working/orpo_merged_model"
+  push_to_hub: false
+  hub_model_id: ""                            # e.g., "your-username/qwen25-7b-orpo"
+
+# ── Evaluation ───────────────────────────────────────────────────────────────
+evaluation:
+  model_path: "/kaggle/working/orpo_merged_model"
+  tasks:
+    - "ifeval"
+    - "gsm8k"
+    - "minerva_math"
+    - "mmlu"
+  batch_size: "auto"
+  output_dir: "/kaggle/working/eval_results"

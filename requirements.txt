@@ -1,0 +1,29 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# ORPO Alignment Pipeline — Qwen2.5-7B
+# Target: Kaggle T4 x2 GPU (Turing SM 7.5, 16GB VRAM)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Unsloth (fast QLoRA, optimized kernels for T4) ───────────────────────────
+unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git
+
+# ── Hugging Face ecosystem ───────────────────────────────────────────────────
+transformers>=4.46.0
+trl>=0.12.0
+peft>=0.13.0
+accelerate>=1.0.0
+datasets>=3.0.0
+
+# ── Quantization (4-bit NF4 via bitsandbytes) ───────────────────────────────
+bitsandbytes>=0.44.0
+
+# ── Attention optimization (required by Unsloth on T4) ──────────────────────
+xformers<0.28
+
+# ── Configuration & logging ─────────────────────────────────────────────────
+pyyaml>=6.0
+wandb>=0.18.0
+
+# ── Evaluation (install separately — see scripts/evaluate.sh) ───────────────
+# lm-eval>=0.4.4
+# langdetect
+# immutabledict
